@@ -15,6 +15,13 @@ interface Notification {
   date: string;
 }
 
+interface DayEvent {
+  dateKey: string; // "YYYY-MM-DD"
+  label: string;
+  emoji: string;
+  color: string;
+}
+
 type DayType = "work" | "rest" | "today-work" | "today-rest";
 
 interface DayInfo {
@@ -29,7 +36,19 @@ const MONTHS_RU = [
   "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
 ];
 
+const MONTHS_RU_GEN = [
+  "января", "февраля", "марта", "апреля", "мая", "июня",
+  "июля", "августа", "сентября", "октября", "ноября", "декабря"
+];
+
 const DAYS_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+
+const EMOJI_OPTIONS = ["🎉", "🎂", "⭐", "🏖️", "💼", "🏥", "✈️", "🎓", "❤️", "🔔", "🏠", "⚡"];
+const COLOR_OPTIONS = ["#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ef4444", "#ec4899", "#06b6d4", "#84cc16"];
+
+function toDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
 
 function getDayInfo(date: Date, settings: CycleSettings): DayInfo {
   const start = new Date(settings.startDate);
@@ -122,6 +141,14 @@ export default function Index() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [notifDismissed, setNotifDismissed] = useState<string[]>([]);
+
+  // Events / holidays
+  const [events, setEvents] = useState<DayEvent[]>([]);
+  const [selectedDay, setSelectedDay] = useState<DayInfo | null>(null);
+  const [showDayModal, setShowDayModal] = useState(false);
+  const [newEventLabel, setNewEventLabel] = useState("");
+  const [newEventEmoji, setNewEventEmoji] = useState("🎉");
+  const [newEventColor, setNewEventColor] = useState("#f59e0b");
 
   const [settings, setSettings] = useState<CycleSettings>({
     workDays: 4,
@@ -220,7 +247,45 @@ export default function Index() {
     return "#888";
   }
 
-  const unreadCount = notifications.length;
+  function openDayModal(dayInfo: DayInfo) {
+    setSelectedDay(dayInfo);
+    setNewEventLabel("");
+    setNewEventEmoji("🎉");
+    setNewEventColor("#f59e0b");
+    setShowDayModal(true);
+  }
+
+  function addEvent() {
+    if (!selectedDay || !newEventLabel.trim()) return;
+    const key = toDateKey(selectedDay.date);
+    const existing = events.find(e => e.dateKey === key);
+    if (existing) {
+      setEvents(ev => ev.map(e => e.dateKey === key ? { ...e, label: newEventLabel, emoji: newEventEmoji, color: newEventColor } : e));
+    } else {
+      setEvents(ev => [...ev, { dateKey: key, label: newEventLabel, emoji: newEventEmoji, color: newEventColor }]);
+    }
+    setShowDayModal(false);
+  }
+
+  function removeEvent(dateKey: string) {
+    setEvents(ev => ev.filter(e => e.dateKey !== dateKey));
+    setShowDayModal(false);
+  }
+
+  function getEventForDay(date: Date): DayEvent | undefined {
+    return events.find(e => e.dateKey === toDateKey(date));
+  }
+
+  // Upcoming events (next 30 days)
+  const upcomingEvents = events
+    .filter(e => {
+      const d = new Date(e.dateKey);
+      const diff = Math.floor((d.getTime() - today.getTime()) / 86400000);
+      return diff >= 0 && diff <= 30;
+    })
+    .sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+
+  const unreadCount = notifications.length + (upcomingEvents.length > 0 ? 1 : 0);
 
   return (
     <div className="min-h-screen font-golos" style={{ background: "var(--bg-main)" }}>
@@ -293,17 +358,17 @@ export default function Index() {
             </button>
 
             {showNotifications && (
-              <div className="absolute right-0 top-11 z-50 w-80 rounded-2xl border border-white/10 shadow-2xl overflow-hidden" style={{ background: "rgba(15,15,30,0.97)", backdropFilter: "blur(20px)" }}>
+              <div className="absolute right-0 top-11 z-50 w-80 rounded-2xl border border-white/10 shadow-2xl overflow-hidden animate-fade-in" style={{ background: "rgba(15,15,30,0.97)", backdropFilter: "blur(20px)" }}>
                 <div className="p-4 border-b border-white/10 flex items-center justify-between">
                   <span className="font-oswald text-sm font-bold text-white tracking-wide">УВЕДОМЛЕНИЯ</span>
                   <button onClick={() => setShowNotifications(false)} className="text-gray-400 hover:text-white">
                     <Icon name="X" size={14} />
                   </button>
                 </div>
-                {notifications.length === 0 ? (
+                {notifications.length === 0 && upcomingEvents.length === 0 ? (
                   <div className="p-6 text-center text-gray-500 text-sm">Нет новых уведомлений</div>
                 ) : (
-                  <div className="p-2 space-y-1">
+                  <div className="p-2 space-y-1 max-h-80 overflow-y-auto">
                     {notifications.map(n => (
                       <div key={n.id} className={`flex items-start gap-3 p-3 rounded-xl ${n.type === "warning" ? "bg-red-500/10 border border-red-500/20" : "bg-blue-500/10 border border-blue-500/20"}`}>
                         <div className="flex-1">
@@ -315,6 +380,21 @@ export default function Index() {
                         </button>
                       </div>
                     ))}
+                    {upcomingEvents.map(ev => {
+                      const d = new Date(ev.dateKey);
+                      const diff = Math.floor((d.getTime() - today.getTime()) / 86400000);
+                      return (
+                        <div key={ev.dateKey} className="flex items-center gap-3 p-3 rounded-xl border" style={{ borderColor: ev.color + "40", background: ev.color + "12" }}>
+                          <span className="text-lg">{ev.emoji}</span>
+                          <div className="flex-1">
+                            <p className="text-sm text-white">{ev.label}</p>
+                            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                              {diff === 0 ? "Сегодня" : diff === 1 ? "Завтра" : `Через ${diff} дн.`} · {d.getDate()} {MONTHS_RU_GEN[d.getMonth()]}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -362,6 +442,8 @@ export default function Index() {
             todayBorder={todayBorder}
             getDayBg={getDayBg}
             getDayTextColor={getDayTextColor}
+            getEventForDay={getEventForDay}
+            onDayClick={openDayModal}
           />
         ) : (
           <YearView
@@ -373,36 +455,193 @@ export default function Index() {
             todayBorder={todayBorder}
             getDayBg={getDayBg}
             getDayTextColor={getDayTextColor}
+            getEventForDay={getEventForDay}
+            onDayClick={openDayModal}
           />
         )}
 
-        <div className="mt-6 rounded-2xl p-4 border border-white/10 backdrop-blur-sm flex flex-wrap gap-6 items-center" style={{ background: "rgba(255,255,255,0.04)" }}>
-          <span className="font-oswald text-sm font-bold text-white tracking-wide">ЛЕГЕНДА</span>
-          <div className="flex flex-wrap gap-4">
-            {[
-              { color: workColor + "22", border: workColor, text: workColor, label: "Рабочий день" },
-              { color: restColor + "33", border: restColor, text: restColor, label: "Выходной день" },
-              { color: workColor, border: todayBorder, text: "#fff", label: "Сегодня (рабочий)" },
-              { color: restColor, border: todayBorder, text: "#fff", label: "Сегодня (выходной)" },
-            ].map((l, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold border-2" style={{ background: l.color, borderColor: l.border, color: l.text }}>
-                  {i < 2 ? "15" : today.getDate()}
+        {/* Legend + upcoming events */}
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-2xl p-4 border border-white/10 backdrop-blur-sm" style={{ background: "rgba(255,255,255,0.04)" }}>
+            <span className="font-oswald text-sm font-bold text-white tracking-wide block mb-3">ЛЕГЕНДА</span>
+            <div className="flex flex-wrap gap-3">
+              {[
+                { color: workColor + "22", border: workColor, text: workColor, label: "Рабочий день" },
+                { color: restColor + "33", border: restColor, text: restColor, label: "Выходной день" },
+                { color: workColor, border: todayBorder, text: "#fff", label: "Сегодня (рабочий)" },
+                { color: restColor, border: todayBorder, text: "#fff", label: "Сегодня (выходной)" },
+                { color: "#f59e0b22", border: "#f59e0b", text: "#f59e0b", label: "День с событием" },
+              ].map((l, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold border-2" style={{ background: l.color, borderColor: l.border, color: l.text }}>
+                    {i === 4 ? "⭐" : i < 2 ? "15" : today.getDate()}
+                  </div>
+                  <span className="text-sm" style={{ color: "var(--text-muted)" }}>{l.label}</span>
                 </div>
-                <span className="text-sm" style={{ color: "var(--text-muted)" }}>{l.label}</span>
-              </div>
-            ))}
+              ))}
+            </div>
+            <div className="mt-3 flex items-center gap-2 text-sm" style={{ color: "var(--text-muted)" }}>
+              <Icon name="RefreshCw" size={12} />
+              <span>Цикл: {settings.workDays} раб. + {settings.restDays} вых. · Нажмите на день чтобы добавить событие</span>
+            </div>
           </div>
-          <div className="ml-auto flex items-center gap-2 text-sm" style={{ color: "var(--text-muted)" }}>
-            <Icon name="RefreshCw" size={12} />
-            <span>Цикл: {settings.workDays} раб. + {settings.restDays} вых.</span>
+
+          <div className="rounded-2xl p-4 border border-white/10 backdrop-blur-sm" style={{ background: "rgba(255,255,255,0.04)" }}>
+            <span className="font-oswald text-sm font-bold text-white tracking-wide block mb-3">
+              СОБЫТИЯ {events.length > 0 && <span className="text-xs font-normal ml-2 text-gray-400">({events.length})</span>}
+            </span>
+            {events.length === 0 ? (
+              <p className="text-sm text-gray-500">Нажмите на любой день в календаре, чтобы отметить праздник или событие</p>
+            ) : (
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {events
+                  .sort((a, b) => a.dateKey.localeCompare(b.dateKey))
+                  .map(ev => {
+                    const d = new Date(ev.dateKey);
+                    return (
+                      <div key={ev.dateKey} className="flex items-center gap-2 group">
+                        <span className="text-base">{ev.emoji}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-white truncate">{ev.label}</p>
+                          <p className="text-xs" style={{ color: "var(--text-muted)" }}>{d.getDate()} {MONTHS_RU_GEN[d.getMonth()]} {d.getFullYear()}</p>
+                        </div>
+                        <button
+                          onClick={() => removeEvent(ev.dateKey)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-red-400"
+                        >
+                          <Icon name="Trash2" size={12} />
+                        </button>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
           </div>
         </div>
       </main>
 
+      {/* Day event modal */}
+      {showDayModal && selectedDay && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }} onClick={() => setShowDayModal(false)}>
+          <div className="w-full max-w-sm rounded-3xl border border-white/15 shadow-2xl overflow-hidden animate-scale-in" style={{ background: "rgba(12,12,24,0.98)" }} onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-white/10">
+              <div className="flex items-center justify-between mb-1">
+                <h2 className="font-oswald text-lg font-bold text-white tracking-wide">
+                  {selectedDay.date.getDate()} {MONTHS_RU_GEN[selectedDay.date.getMonth()]} {selectedDay.date.getFullYear()}
+                </h2>
+                <button onClick={() => setShowDayModal(false)} className="text-gray-400 hover:text-white">
+                  <Icon name="X" size={18} />
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{
+                  background: selectedDay.cyclePhase === "work" ? "#3b82f622" : "#ef444422",
+                  color: selectedDay.cyclePhase === "work" ? "#3b82f6" : "#ef4444"
+                }}>
+                  {selectedDay.cyclePhase === "work" ? "Рабочий день" : "Выходной день"}
+                </span>
+                {getEventForDay(selectedDay.date) && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: "#f59e0b22", color: "#f59e0b" }}>
+                    Есть событие
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {getEventForDay(selectedDay.date) ? (
+              <div className="p-5">
+                <div className="flex items-center gap-3 p-3 rounded-xl mb-4" style={{ background: getEventForDay(selectedDay.date)!.color + "15", border: `1px solid ${getEventForDay(selectedDay.date)!.color}30` }}>
+                  <span className="text-2xl">{getEventForDay(selectedDay.date)!.emoji}</span>
+                  <p className="text-white font-medium">{getEventForDay(selectedDay.date)!.label}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { removeEvent(toDateKey(selectedDay.date)); }}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-all"
+                  >
+                    Удалить
+                  </button>
+                  <button
+                    onClick={() => {
+                      const ev = getEventForDay(selectedDay.date)!;
+                      setNewEventLabel(ev.label);
+                      setNewEventEmoji(ev.emoji);
+                      setNewEventColor(ev.color);
+                      removeEvent(toDateKey(selectedDay.date));
+                    }}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-white/10 text-gray-300 hover:text-white transition-all"
+                    style={{ background: "rgba(255,255,255,0.05)" }}
+                  >
+                    Изменить
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>Название события</label>
+                  <input
+                    type="text"
+                    value={newEventLabel}
+                    onChange={e => setNewEventLabel(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && addEvent()}
+                    placeholder="Например: День рождения"
+                    className="w-full px-4 py-2.5 rounded-xl text-white border border-white/15 outline-none focus:border-yellow-400/50 transition-colors text-sm"
+                    style={{ background: "rgba(255,255,255,0.05)" }}
+                    autoFocus
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>Иконка</label>
+                  <div className="flex flex-wrap gap-2">
+                    {EMOJI_OPTIONS.map(em => (
+                      <button
+                        key={em}
+                        onClick={() => setNewEventEmoji(em)}
+                        className="w-9 h-9 rounded-xl flex items-center justify-center text-lg transition-all border"
+                        style={newEventEmoji === em
+                          ? { background: "rgba(255,255,255,0.15)", borderColor: "rgba(255,255,255,0.4)" }
+                          : { background: "rgba(255,255,255,0.05)", borderColor: "transparent" }}
+                      >
+                        {em}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>Цвет</label>
+                  <div className="flex gap-2">
+                    {COLOR_OPTIONS.map(c => (
+                      <button
+                        key={c}
+                        onClick={() => setNewEventColor(c)}
+                        className="w-7 h-7 rounded-lg transition-all border-2"
+                        style={{ background: c, borderColor: newEventColor === c ? "#fff" : "transparent" }}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  onClick={addEvent}
+                  disabled={!newEventLabel.trim()}
+                  className="w-full py-3 rounded-xl font-bold text-sm text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90"
+                  style={{ background: newEventLabel.trim() ? `linear-gradient(135deg, ${newEventColor}, ${newEventColor}aa)` : "rgba(255,255,255,0.1)" }}
+                >
+                  {newEventEmoji} Добавить событие
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Settings modal */}
       {showSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}>
-          <div className="w-full max-w-md rounded-3xl border border-white/15 shadow-2xl overflow-hidden" style={{ background: "rgba(12,12,24,0.97)" }}>
+          <div className="w-full max-w-md rounded-3xl border border-white/15 shadow-2xl overflow-hidden animate-scale-in" style={{ background: "rgba(12,12,24,0.97)" }}>
             <div className="p-6 border-b border-white/10 flex items-center justify-between">
               <h2 className="font-oswald text-xl font-bold text-white tracking-wide">НАСТРОЙКИ ЦИКЛА</h2>
               <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-white transition-colors">
@@ -511,58 +750,70 @@ export default function Index() {
 
 function MonthView({
   year, month, days, onPrev, onNext,
-  todayBorder, getDayBg, getDayTextColor
+  todayBorder, getDayBg, getDayTextColor, getEventForDay, onDayClick
 }: {
-  year: number; month: number; days: (DayInfo | null)[];
-  onPrev: () => void; onNext: () => void;
+  year: number;
+  month: number;
+  days: (DayInfo | null)[];
+  onPrev: () => void;
+  onNext: () => void;
   todayBorder: string;
   getDayBg: (t: DayType) => string;
   getDayTextColor: (t: DayType) => string;
+  getEventForDay: (d: Date) => DayEvent | undefined;
+  onDayClick: (d: DayInfo) => void;
 }) {
   return (
     <div className="rounded-3xl border border-white/10 overflow-hidden backdrop-blur-sm" style={{ background: "rgba(255,255,255,0.03)" }}>
       <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-        <button onClick={onPrev} className="w-9 h-9 rounded-xl flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-all">
-          <Icon name="ChevronLeft" size={18} />
+        <button onClick={onPrev} className="w-9 h-9 rounded-xl flex items-center justify-center border border-white/10 hover:border-white/30 transition-all text-gray-300 hover:text-white" style={{ background: "rgba(255,255,255,0.05)" }}>
+          <Icon name="ChevronLeft" size={16} />
         </button>
-        <h2 className="font-oswald text-2xl font-bold text-white tracking-wider">
-          {MONTHS_RU[month]} <span style={{ color: "var(--text-muted)" }}>{year}</span>
+        <h2 className="font-oswald text-2xl font-bold text-white tracking-wide">
+          {MONTHS_RU[month].toUpperCase()} {year}
         </h2>
-        <button onClick={onNext} className="w-9 h-9 rounded-xl flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-all">
-          <Icon name="ChevronRight" size={18} />
+        <button onClick={onNext} className="w-9 h-9 rounded-xl flex items-center justify-center border border-white/10 hover:border-white/30 transition-all text-gray-300 hover:text-white" style={{ background: "rgba(255,255,255,0.05)" }}>
+          <Icon name="ChevronRight" size={16} />
         </button>
       </div>
 
-      <div className="grid grid-cols-7 border-b border-white/10">
-        {DAYS_SHORT.map(d => (
-          <div key={d} className="py-3 text-center text-xs font-bold tracking-widest" style={{ color: "var(--text-muted)" }}>
-            {d}
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-7 p-3 gap-1.5">
-        {days.map((day, i) => {
-          if (!day) return <div key={i} />;
-          const isToday = day.type === "today-work" || day.type === "today-rest";
-          return (
-            <div
-              key={i}
-              className="aspect-square rounded-xl flex items-center justify-center text-sm font-semibold transition-all cursor-default border-2 relative"
-              style={{
-                background: getDayBg(day.type),
-                color: getDayTextColor(day.type),
-                borderColor: isToday ? todayBorder : "transparent",
-                boxShadow: isToday ? `0 0 14px ${todayBorder}55` : "none",
-              }}
-            >
-              {day.date.getDate()}
-              {isToday && (
-                <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-current opacity-80" />
-              )}
-            </div>
-          );
-        })}
+      <div className="p-4">
+        <div className="grid grid-cols-7 mb-2">
+          {DAYS_SHORT.map(d => (
+            <div key={d} className="text-center text-xs font-bold py-2 tracking-widest" style={{ color: "var(--text-muted)" }}>{d}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {days.map((day, i) => {
+            if (!day) return <div key={i} />;
+            const ev = getEventForDay(day.date);
+            const isToday = day.type === "today-work" || day.type === "today-rest";
+            return (
+              <button
+                key={i}
+                onClick={() => onDayClick(day)}
+                className="relative aspect-square rounded-xl flex flex-col items-center justify-center transition-all hover:scale-105 hover:z-10 cursor-pointer group"
+                style={{
+                  background: getDayBg(day.type),
+                  color: getDayTextColor(day.type),
+                  border: isToday ? `2px solid ${todayBorder}` : ev ? `2px solid ${ev.color}80` : "2px solid transparent",
+                  boxShadow: isToday ? `0 0 12px ${todayBorder}40` : "none",
+                }}
+                title={ev ? ev.emoji + " " + ev.label : undefined}
+              >
+                <span className="text-sm font-bold leading-none">{day.date.getDate()}</span>
+                {ev && (
+                  <span className="text-[10px] leading-none mt-0.5">{ev.emoji}</span>
+                )}
+                {!ev && (
+                  <span className="absolute inset-0 rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[10px]" style={{ color: "var(--text-muted)" }}>
+                    +
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -570,64 +821,70 @@ function MonthView({
 
 function YearView({
   year, settings, onPrevYear, onNextYear, onSelectMonth,
-  todayBorder, getDayBg, getDayTextColor
+  todayBorder, getDayBg, getDayTextColor, getEventForDay, onDayClick
 }: {
-  year: number; settings: CycleSettings;
-  onPrevYear: () => void; onNextYear: () => void;
+  year: number;
+  settings: CycleSettings;
+  onPrevYear: () => void;
+  onNextYear: () => void;
   onSelectMonth: (m: number) => void;
   todayBorder: string;
   getDayBg: (t: DayType) => string;
   getDayTextColor: (t: DayType) => string;
+  getEventForDay: (d: Date) => DayEvent | undefined;
+  onDayClick: (d: DayInfo) => void;
 }) {
-  const today = new Date();
-
   return (
     <div className="rounded-3xl border border-white/10 overflow-hidden backdrop-blur-sm" style={{ background: "rgba(255,255,255,0.03)" }}>
       <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-        <button onClick={onPrevYear} className="w-9 h-9 rounded-xl flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-all">
-          <Icon name="ChevronLeft" size={18} />
+        <button onClick={onPrevYear} className="w-9 h-9 rounded-xl flex items-center justify-center border border-white/10 hover:border-white/30 transition-all text-gray-300 hover:text-white" style={{ background: "rgba(255,255,255,0.05)" }}>
+          <Icon name="ChevronLeft" size={16} />
         </button>
-        <h2 className="font-oswald text-3xl font-bold text-white tracking-wider">{year}</h2>
-        <button onClick={onNextYear} className="w-9 h-9 rounded-xl flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-all">
-          <Icon name="ChevronRight" size={18} />
+        <h2 className="font-oswald text-2xl font-bold text-white tracking-wide">{year}</h2>
+        <button onClick={onNextYear} className="w-9 h-9 rounded-xl flex items-center justify-center border border-white/10 hover:border-white/30 transition-all text-gray-300 hover:text-white" style={{ background: "rgba(255,255,255,0.05)" }}>
+          <Icon name="ChevronRight" size={16} />
         </button>
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
-        {Array.from({ length: 12 }, (_, m) => {
+      <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {MONTHS_RU.map((mName, m) => {
           const mDays = getMonthDays(year, m, settings);
           return (
-            <div
-              key={m}
-              className="rounded-2xl border border-white/10 overflow-hidden cursor-pointer hover:border-white/25 transition-all hover:-translate-y-0.5"
-              style={{ background: "rgba(255,255,255,0.03)" }}
-              onClick={() => onSelectMonth(m)}
-            >
-              <div className="px-3 py-2 border-b border-white/10">
-                <span className="font-oswald text-sm font-bold text-white tracking-wider">{MONTHS_RU[m]}</span>
-              </div>
-              <div className="grid grid-cols-7 px-1 pt-1 pb-1 gap-0.5">
-                {DAYS_SHORT.map(d => (
-                  <div key={d} className="text-center text-[9px]" style={{ color: "var(--text-muted)" }}>{d}</div>
-                ))}
-                {mDays.map((day, i) => {
-                  if (!day) return <div key={i} />;
-                  const isToday = today.getFullYear() === year && today.getMonth() === m && today.getDate() === day.date.getDate();
-                  return (
-                    <div
-                      key={i}
-                      className="aspect-square rounded flex items-center justify-center text-[10px] font-medium"
-                      style={{
-                        background: getDayBg(day.type),
-                        color: getDayTextColor(day.type),
-                        outline: isToday ? `1.5px solid ${todayBorder}` : "none",
-                        outlineOffset: "-1px",
-                      }}
-                    >
-                      {day.date.getDate()}
-                    </div>
-                  );
-                })}
+            <div key={m} className="rounded-2xl border border-white/10 overflow-hidden" style={{ background: "rgba(255,255,255,0.03)" }}>
+              <button
+                onClick={() => onSelectMonth(m)}
+                className="w-full px-3 py-2 font-oswald text-sm font-bold tracking-wide text-white hover:text-blue-300 transition-colors text-center border-b border-white/10"
+              >
+                {mName.toUpperCase()}
+              </button>
+              <div className="p-2">
+                <div className="grid grid-cols-7 mb-1">
+                  {DAYS_SHORT.map(d => (
+                    <div key={d} className="text-center text-[8px]" style={{ color: "var(--text-muted)" }}>{d[0]}</div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-px">
+                  {mDays.map((day, i) => {
+                    if (!day) return <div key={i} className="aspect-square" />;
+                    const ev = getEventForDay(day.date);
+                    const isToday = day.type === "today-work" || day.type === "today-rest";
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => onDayClick(day)}
+                        className="aspect-square rounded-sm flex items-center justify-center text-[9px] font-medium transition-all hover:opacity-80 cursor-pointer relative"
+                        style={{
+                          background: getDayBg(day.type),
+                          color: getDayTextColor(day.type),
+                          outline: isToday ? `1.5px solid ${todayBorder}` : ev ? `1.5px solid ${ev.color}` : "none",
+                          outlineOffset: "1px",
+                        }}
+                        title={ev ? ev.label : undefined}
+                      >
+                        {ev ? ev.emoji.slice(0, 1) : day.date.getDate()}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           );
