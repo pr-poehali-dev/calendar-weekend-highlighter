@@ -32,7 +32,14 @@ export default function Index() {
   const [newEventColor, setNewEventColor] = useState("#f59e0b");
 
   const [settings, setSettings] = useState<CycleSettings>(() => {
-    try { return JSON.parse(localStorage.getItem("rc_settings") || "null") || DEFAULT_SETTINGS; } catch { return DEFAULT_SETTINGS; }
+    try {
+      const saved = JSON.parse(localStorage.getItem("rc_settings") || "null");
+      // Если сохранённые настройки содержат старую дату отсчёта — сбрасываем на правильный график
+      if (saved && saved.startDate !== "2026-03-31") {
+        return DEFAULT_SETTINGS;
+      }
+      return saved || DEFAULT_SETTINGS;
+    } catch { return DEFAULT_SETTINGS; }
   });
 
   const [tempSettings, setTempSettings] = useState<CycleSettings>(settings);
