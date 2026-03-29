@@ -3,6 +3,7 @@ import Icon from "@/components/ui/icon";
 import AppHeader from "@/components/AppHeader";
 import DayEventModal from "@/components/DayEventModal";
 import SettingsModal from "@/components/SettingsModal";
+import LockScreen from "@/components/LockScreen";
 import { MonthView, YearView, LegendPanel } from "@/components/CalendarGrid";
 import {
   CycleSettings, DayEvent, DayInfo, DayType, Notification,
@@ -10,7 +11,53 @@ import {
   getMonthStats, getYearStats, getUpcomingRest,
 } from "@/lib/calendar";
 
+// ── Auth wrapper ─────────────────────────────────────────────────────────────
+
 export default function Index() {
+  const [storedPassword, setStoredPassword] = useState<string | null>(
+    () => localStorage.getItem("rc_password")
+  );
+  const [isUnlocked, setIsUnlocked] = useState(
+    () => sessionStorage.getItem("rc_unlocked") === "1"
+  );
+
+  function handleUnlock(input: string): boolean {
+    if (input === storedPassword) {
+      sessionStorage.setItem("rc_unlocked", "1");
+      setIsUnlocked(true);
+      return true;
+    }
+    return false;
+  }
+
+  function handleSetPassword(password: string) {
+    localStorage.setItem("rc_password", password);
+    sessionStorage.setItem("rc_unlocked", "1");
+    setStoredPassword(password);
+    setIsUnlocked(true);
+  }
+
+  function handleChangePassword(newPassword: string) {
+    localStorage.setItem("rc_password", newPassword);
+    setStoredPassword(newPassword);
+  }
+
+  if (!isUnlocked) {
+    return (
+      <LockScreen
+        isFirstTime={!storedPassword}
+        onUnlock={handleUnlock}
+        onSetPassword={handleSetPassword}
+      />
+    );
+  }
+
+  return <CalendarApp onChangePassword={handleChangePassword} />;
+}
+
+// ── Calendar app ─────────────────────────────────────────────────────────────
+
+function CalendarApp({ onChangePassword }: { onChangePassword: (p: string) => void }) {
   const today = new Date();
 
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
@@ -21,7 +68,6 @@ export default function Index() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [notifDismissed, setNotifDismissed] = useState<string[]>([]);
 
-  // Events / holidays
   const [events, setEvents] = useState<DayEvent[]>(() => {
     try { return JSON.parse(localStorage.getItem("rc_events") || "[]"); } catch { return []; }
   });
@@ -34,10 +80,7 @@ export default function Index() {
   const [settings, setSettings] = useState<CycleSettings>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("rc_settings") || "null");
-      // Если сохранённые настройки содержат старую дату отсчёта — сбрасываем на правильный график
-      if (saved && saved.startDate !== "2026-03-31") {
-        return DEFAULT_SETTINGS;
-      }
+      if (saved && saved.startDate !== "2026-03-31") return DEFAULT_SETTINGS;
       return saved || DEFAULT_SETTINGS;
     } catch { return DEFAULT_SETTINGS; }
   });
@@ -88,7 +131,6 @@ export default function Index() {
 
   useEffect(() => { buildNotifications(); }, [buildNotifications]);
 
-  // ── Derived data ────────────────────────────────────────────────────────────
   const days = getMonthDays(currentYear, currentMonth, settings);
   const monthStats = getMonthStats(currentYear, currentMonth, settings);
   const yearStats = getYearStats(currentYear, settings);
@@ -103,7 +145,6 @@ export default function Index() {
 
   const unreadCount = notifications.length + (upcomingEvents.length > 0 ? 1 : 0);
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
   function prevMonth() {
     if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(y => y - 1); }
     else setCurrentMonth(m => m - 1);
@@ -174,7 +215,6 @@ export default function Index() {
     return events.find(e => e.dateKey === toDateKey(date));
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen font-golos" style={{ background: "var(--bg-main)" }}>
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
@@ -289,6 +329,7 @@ export default function Index() {
           onTodayBorderChange={setTodayBorder}
           onSave={saveSettings}
           onClose={() => setShowSettings(false)}
+          onChangePassword={onChangePassword}
         />
       )}
     </div>
