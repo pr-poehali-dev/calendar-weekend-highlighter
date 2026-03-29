@@ -97,5 +97,74 @@
 
   body {
     @apply bg-background text-foreground;
+    background: var(--bg-main);
+  }
+
+  :root {
+    --bg-main: #070711;
+    --text-muted: #6b7280;
+  }
+}
+
+/* Animated orbs */
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.35;
+}
+
+.orb-1 {
+  width: 600px;
+  height: 600px;
+  top: -200px;
+  left: -100px;
+  background: radial-gradient(circle, #3b82f6 0%, transparent 70%);
+  animation: orb-float 12s ease-in-out infinite;
+}
+
+.orb-2 {
+  width: 500px;
+  height: 500px;
+  top: 30%;
+  right: -150px;
+  background: radial-gradient(circle, #8b5cf6 0%, transparent 70%);
+  animation: orb-float 15s ease-in-out infinite reverse;
+}
+
+.orb-3 {
+  width: 400px;
+  height: 400px;
+  bottom: -100px;
+  left: 40%;
+  background: radial-gradient(circle, #ef444433 0%, transparent 70%);
+  animation: orb-float 10s ease-in-out infinite 3s;
+}
+
+@keyframes orb-float {
+  0%,
+  100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-40px) scale(1.05);
+  }
+}
+
+/* Print styles */
+@media print {
+  .orb,
+  header button,
+  .fixed {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+  }
+  .rounded-3xl {
+    border: 1px solid #ccc !important;
+  }
+  * {
+    color: #000 !important;
   }
 }
