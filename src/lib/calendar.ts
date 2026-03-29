@@ -46,8 +46,8 @@ export const COLOR_OPTIONS = ["#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ef44
 export const DEFAULT_SETTINGS: CycleSettings = {
   workDays: 4,
   restDays: 2,
-  startDate: "2026-01-01",
-  startDayType: "work",
+  startDate: "2026-03-31",
+  startDayType: "rest",
 };
 
 export function toDateKey(date: Date): string {
