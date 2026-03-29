@@ -143,24 +143,26 @@ export default function Index() {
   const [notifDismissed, setNotifDismissed] = useState<string[]>([]);
 
   // Events / holidays
-  const [events, setEvents] = useState<DayEvent[]>([]);
+  const [events, setEvents] = useState<DayEvent[]>(() => {
+    try { return JSON.parse(localStorage.getItem("rc_events") || "[]"); } catch { return []; }
+  });
   const [selectedDay, setSelectedDay] = useState<DayInfo | null>(null);
   const [showDayModal, setShowDayModal] = useState(false);
   const [newEventLabel, setNewEventLabel] = useState("");
   const [newEventEmoji, setNewEventEmoji] = useState("🎉");
   const [newEventColor, setNewEventColor] = useState("#f59e0b");
 
-  const [settings, setSettings] = useState<CycleSettings>({
-    workDays: 4,
-    restDays: 2,
-    startDate: "2026-01-01",
-    startDayType: "work",
+  const [settings, setSettings] = useState<CycleSettings>(() => {
+    try { return JSON.parse(localStorage.getItem("rc_settings") || "null") || { workDays: 4, restDays: 2, startDate: "2026-01-01", startDayType: "work" }; } catch { return { workDays: 4, restDays: 2, startDate: "2026-01-01", startDayType: "work" }; }
   });
 
   const [tempSettings, setTempSettings] = useState<CycleSettings>(settings);
   const [workColor, setWorkColor] = useState("#3b82f6");
   const [restColor, setRestColor] = useState("#ef4444");
   const [todayBorder, setTodayBorder] = useState("#facc15");
+
+  useEffect(() => { localStorage.setItem("rc_events", JSON.stringify(events)); }, [events]);
+  useEffect(() => { localStorage.setItem("rc_settings", JSON.stringify(settings)); }, [settings]);
 
   const buildNotifications = useCallback(() => {
     const notifs: Notification[] = [];
